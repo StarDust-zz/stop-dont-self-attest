@@ -1,0 +1,17 @@
+Object (7/7): The stop gate's precedence (stop > unsafe > cliff/continue) is only safe within one life. Across a checkpoint restore, internal actions (continue, cliff) replay byte-identically and need no permission, but terminal actions (stop = verdict, unsafe = page) repeat. On a 290-case matrix, a checkpoint that self-attests "not stopped" gives 120 duplicate verdicts (24 contradicting) and 10 duplicate pages; a lagging copy of the checkpoint gives 160 / 24 / 20; a terminal record kept outside the checkpoint (monotone counter or append-only outbox) gives 0 / 0 / 0 and blocks 0 of 40 internal resumes.
+
+Keepers in plain words:
+1. Split the four actions by where they land. continue and cliff only rewrite the agent's own context and replay identically from any checkpoint. stop and unsafe leave the process. Only the second pair needs a witness.
+2. A second life is a second draw, not a correction. Every pre-stop restore under self-attest re-delivers. Contradictions fall with how much evidence the checkpoint kept (early 12, mid 10, late 2 of 40), and flip both ways (16 NoEffect to Beneficial, 8 the other way).
+3. A lagging copy of the checkpoint is strictly worse than the checkpoint itself: it adds the cases where the checkpoint already knew (120 to 160 duplicate verdicts, 10 to 20 duplicate pages).
+4. Re-open the witness at emit, not only at resume. Two workers that both read an empty outbox at resume deliver twice in 40/40 sessions (5 contradicting); re-opened at emit, 0, and every second worker is labelled a failed certificate and adopts.
+5. A witnessed terminal wins over any fresh compile. Without it, a raised budget silently supersedes an open escalation (10/10) and a cut budget pages a human about a finished session (40/40); with it, 0 and 0. This answers the parent's stop-vs-unsafe precedence question across lives: first terminal to reach the world wins.
+6. A witness that lags (but never reverts) only costs duplicates, never false adopts (0 at every lag). Re-opening at emit buys back the second life's duration: lag 2 to 3 goes from 40/40 duplicates to 0, lag 5 still leaves 25/40.
+
+Non-keepers / partly falsified:
+- self/monotone and witness give identical numbers: in this toy both read the true emit history. They differ only in what failures they share with the checkpoint, which is not modelled.
+- The lagging-witness and two-worker numbers are stylized by construction (resume one tick after the stop, emit tick = resume + second-life length). The ordering is the keeper, not the tick counts.
+- 27/40 first-life verdicts are false Beneficial at b = 0.18 with this stop stub. That is a property of the parent's toy stop parameters, not a finding here; the pack measures duplication and contradiction, not verdict accuracy.
+- "Replay is safe" holds for this deterministic stub (nest is deterministic here too). A live model with sampling would make even internal replays differ; this pack does not test that.
+
+Still a hunch: where the outbox lives in a real agent harness (a verdict log the checkpoint can't restore, a ticket system, signed receipts from the recipient); whether "adopt" should also hand the second life's evidence to a human when it would have contradicted; and whether an idempotency key on the terminal record is enough on its own, or the witness read at emit is still needed when two workers race with different verdicts.
